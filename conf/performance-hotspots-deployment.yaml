@@ -1,0 +1,124 @@
+---
+layout: null
+---
+
+---
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: allow-tigera.allow-performance-hotspots
+  namespace: tigera-intrusion-detection
+spec:
+  tier: allow-tigera
+  order: 1
+  selector: app == 'performance-hotspots'
+  types:
+  - Ingress
+  - Egress
+  egress:
+  - action: Allow
+    protocol: TCP
+    destination:
+      namespaceSelector: name == 'tigera-elasticsearch'
+      selector: elasticsearch.k8s.elastic.co/cluster-name == 'tigera-secure'
+      ports:
+      - 9200
+  - action: Allow
+    protocol: UDP
+    destination:
+      namespaceSelector: projectcalico.org/name == 'kube-system'
+      selector: k8s-app == 'kube-dns'
+      ports:
+      - 53
+  - action: Allow
+    protocol: UDP
+    destination:
+      namespaceSelector: projectcalico.org/name == "openshift-dns"
+      selector: dns.operator.openshift.io/daemonset-dns == "default"
+      ports: [5353]
+---
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: allow-tigera.elasticsearch-access-performance-hotspots
+  namespace: tigera-elasticsearch
+spec:
+  tier: allow-tigera
+  order: 1
+  selector: elasticsearch.k8s.elastic.co/cluster-name == 'tigera-secure'
+  types:
+  - Ingress
+  ingress:
+  - action: Allow
+    destination:
+      ports:
+      - 9200
+    protocol: TCP
+    source:
+      namespaceSelector: name == 'tigera-intrusion-detection'
+      selector:  app == 'performance-hotspots'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: performance-hotspots-deployment
+  namespace: tigera-performance-hotspots
+  labels:
+    app: performance-hotspots
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: performance-hotspots
+  template:
+    metadata:
+      labels:
+        app: performance-hotspots
+    spec:
+      imagePullSecrets:
+      - name: tigera-pull-secret
+      containers:
+      - name: ad-jobs
+        image: {{page.registry}}{% include component_image component="performance_hotspots" %}
+        resources:
+          requests:
+            memory: 1G
+        securityContext:
+          privileged: true
+          allowPrivilegeEscalation: true
+        env:
+          - name: CLUSTER_NAME
+            value: "cluster"
+          - name: ELASTIC_PORT
+            value: "9200"
+          - name: ES_CA_CERT
+            value: /certs/es-ca.pem
+          - name: ELASTIC_USER
+            valueFrom:
+              secretKeyRef:
+                key: username
+                name: tigera-ee-performance-hotspots-elasticsearch-access
+          - name: ELASTIC_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: password
+                name: tigera-ee-performance-hotspots-elasticsearch-access
+        volumeMounts:
+          - name: host-volume
+            mountPath: /home/idsuser/performance_hotspots/models
+          - name: es-certs
+            mountPath: /certs/es-ca.pem
+            subPath: es-ca.pem
+        command: ["python3"]
+        args: ["-m", "ph"]
+      volumes:
+        - name: es-certs
+          secret:
+            defaultMode: 420
+            items:
+              - key: tls.crt
+                path: es-ca.pem
+            secretName: tigera-secure-es-http-certs-public
+        - name: host-volume
+          hostPath:
+            path: /var/log/calico/performance_hotspots

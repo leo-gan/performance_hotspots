@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: performance-hotspots
+  name: performance-hotspots-deployment
+  namespace: tigera-intrusion-detection
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: performance-hotspots
+  template:
+    metadata:
+      labels:
+        app: performance-hotspots
+    spec:
+      containers:
+      - args: ["-m", "tests.fv"]
+        command:
+        - python3
+        env:
+        - name: CLUSTER_NAME
+          value: cluster
+        - name: ELASTIC_PORT
+          value: '9200'
+        - name: ES_CA_CERT
+          value: /certs/es-ca.pem
+        - name: ELASTIC_USER
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: tigera-ee-performance-hotspots-elasticsearch-access
+        - name: ELASTIC_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: password
+              name: tigera-ee-performance-hotspots-elasticsearch-access
+        image: gcr.io/unique-caldron-775/cnx/tigera/performance_hotspots:master
+        name: performance-hotspots
+        resources:
+          requests:
+            memory: 1G
+        securityContext:
+          allowPrivilegeEscalation: false
+        volumeMounts:
+        - mountPath: /home/idsuser/performance_hotspots/models
+          name: host-volume
+        - mountPath: /certs/es-ca.pem
+          name: es-certs
+          subPath: es-ca.pem
+      imagePullSecrets:
+      - name: tigera-pull-secret
+      volumes:
+      - name: es-certs
+        secret:
+          defaultMode: 420
+          items:
+          - key: tls.crt
+            path: es-ca.pem
+          secretName: tigera-secure-es-http-certs-public
+      - name: host-volume
+        hostPath:
+          path: /var/log/calico/performance-hotspots

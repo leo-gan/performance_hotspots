@@ -1,0 +1,20 @@
+venv/
+notebooks/.ipynb_checkpoints/
+__pycache__/
+# .idea/
+
+*.csv
+!dns-anomaly*.csv
+!ip_sweep-anomaly*.csv
+!l7-duration-anomaly*.csv
+!port_scan-anomaly*.csv
+
+*.pkl
+*.model
+*.jsonl
+
+elastic_ca.pem
+implementaion_notes.txt
+.vscode/*
+
+Makefile.common*

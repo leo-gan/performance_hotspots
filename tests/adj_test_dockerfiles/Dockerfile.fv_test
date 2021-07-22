@@ -1,0 +1,48 @@
+FROM amd64/python:3.7-slim-buster as build-env
+RUN apt-get upgrade && apt-get update
+
+WORKDIR /home/idsuser/performance_hotspots
+
+ARG KUBECONFIG
+
+COPY ./ph/*.py ./ph/
+COPY ./models/.placeholder ./models/
+COPY ./data/*.test_dataset.csv ./data/
+
+# ARG ES_CA_CERT
+ARG ELASTIC_USER
+ARG ELASTIC_PASSWORD
+ARG ELASTIC_HOST
+ARG ELASTIC_PORT=9200
+
+ARG AD_TEST_USE_ELASTICSEARCH=True
+ARG AD_TEST_LOCAL=True
+ARG AD_debug=True
+
+
+# copy the fv and run the fv as a package to run it later
+COPY ./tests/fv/*.py ./fv/
+# copies nothing if empty ARG
+COPY ${ES_CA_CERT} ./fv/
+
+# install requirements
+COPY requirements.txt ./
+RUN pip3 install --no-cache-dir --trusted-host pypi.python.org -r requirements.txt
+
+ENV PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# expose args as env_var that will be picked up by the fv test package
+# ENV ES_CA_CERT=${ES_CA_CERT:+./fv/$ES_CA_CERT}
+ENV ELASTIC_USER=${ELASTIC_USER}
+ENV ELASTIC_HOST=${ELASTIC_HOST}
+ENV ELASTIC_PORT=${ELASTIC_PORT}
+ENV ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+ENV KUBECONFIG=${KUBECONFIG:+${KUBECONFIG}}
+
+# run on local for FVs until we can trigger a cluster on ci
+ENV AD_TEST_USE_ELASTICSEARCH=True
+ENV AD_TEST_LOCAL=True
+ENV AD_debug=True
+
+WORKDIR /home/idsuser/performance_hotspots/
+ENTRYPOINT ["python3", "-m", "tests.fv"]
